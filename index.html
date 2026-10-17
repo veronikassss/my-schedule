@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Расписание занятий</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f2f5; color: #333; user-select: none; }
+
+  .header {
+    background: #fff;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    position: sticky; top: 0; z-index: 100;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .header h1 { font-size: 20px; color: #1a1a2e; }
+  .header-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .header-controls button {
+    padding: 8px 16px; border: none; border-radius: 8px;
+    cursor: pointer; font-size: 14px; font-weight: 600;
+    transition: all 0.2s;
+  }
+  .btn-prev, .btn-next { background: #e8e8e8; color: #333; }
+  .btn-prev:hover, .btn-next:hover { background: #d0d0d0; }
+  .btn-today { background: #6c5ce7; color: #fff; }
+  .btn-today:hover { background: #5a4bd1; }
+  .btn-clear { background: #e74c3c; color: #fff; }
+  .btn-clear:hover { background: #c0392b; }
+  .btn-migrate { background: #f59e0b; color: #fff; }
+  .btn-migrate:hover { background: #d97706; }
+  .btn-export { background: #10b981; color: #fff; }
+  .btn-export:hover { background: #059669; }
+  .btn-import { background: #3b82f6; color: #fff; }
+  .btn-import:hover { background: #2563eb; }
+  .week-label { font-size: 16px; font-weight: 600; min-width: 200px; text-align: center; }
+
+  .view-switcher {
+    display: flex; gap: 4px;
+    background: #e8e8e8;
+    padding: 4px;
+    border-radius: 8px;
+  }
+  .view-btn {
+    padding: 8px 16px; border: none; border-radius: 6px;
+    background: transparent; cursor: pointer;
+    font-size: 14px; font-weight: 600; color: #666;
+    transition: all 0.2s;
+  }
+  .view-btn.active {
+    background: #fff; color: #6c5ce7;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+
+  .schedule-container { display: flex; overflow-x: auto; padding: 10px; }
+
+  .time-column {
+    min-width: 60px; background: #fff;
+    border-radius: 8px 0 0 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+  .time-header {
+    height: 50px; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: #999; border-bottom: 1px solid #eee;
+  }
+  .time-slot {
+    height: 60px; display: flex; align-items: flex-start; justify-content: center;
+    font-size: 12px; color: #999; padding-top: 4px;
+    border-bottom: 1px solid #f5f5f5;
+  }
+
+  .days-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    flex: 1; min-width: 700px; background: #fff;
+    border-radius: 0 8px 8px 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  }
+
+  .day-header {
+    height: 50px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    border-bottom: 2px solid #eee; border-right: 1px solid #f0f0f0;
+    font-size: 13px; color: #666; background: #fafafa;
+  }
+  .day-header .day-name { font-weight: 700; font-size: 14px; }
+  .day-header .day-date { font-size: 12px; color: #999; }
+  .day-header.today { background: #6c5ce7; color: #fff; }
+  .day-header.today .day-date { color: #ddd; }
+
+  .day-column { border-right: 1px solid #f0f0f0; position: relative; }
+
+  .hour-cell {
+    height: 60px; border-bottom: 1px solid #f5f5f5;
+    cursor: pointer; transition: background 0.15s;
+    position: relative;
+  }
+  .hour-cell:hover { background: #f8f7ff; }
+  .hour-cell.drag-over {
+    background: #e0e7ff !important;
+    box-shadow: inset 0 0 0 2px #6c5ce7;
+  }
+
+  .lesson-block {
+    position: absolute; left: 4px; right: 4px;
+    border-radius: 6px; padding: 4px 8px;
+    font-size: 12px; cursor: pointer;
+    z-index: 10; overflow: hidden;
+    transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+    border-left: 4px solid;
+  }
+  .lesson-block:hover {
+    transform: scale(1.02);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 20;
+  }
+  .lesson-block.dragging { opacity: 0.3; transform: scale(0.95); }
+
+  .lesson-block.school-tetrika { background: #dbeafe; border-left-color: #2563eb; }
+  .lesson-block.school-synergy { background: #fce7f3; border-left-color: #db2777; }
+  .lesson-block.school-own { background: #d1fae5; border-left-color: #059669; }
+  .lesson-block.vacation { background: #ffe0e0 !important; border-left-color: #e74c3c !important; }
+
+  .lesson-block .lesson-name { font-weight: 700; font-size: 13px; }
+  .lesson-block .lesson-time { font-size: 11px; color: #666; }
+  .lesson-block .lesson-subject { font-size: 11px; color: #888; }
+  .lesson-block .lesson-school {
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-top: 2px; opacity: 0.7;
+  }
+  .lesson-block .recurring-icon { font-size: 10px; margin-left: 4px; opacity: 0.6; }
+  .lesson-block .check-icon {
+    position: absolute; top: 4px; right: 4px;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid #999; background: #fff;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; transition: all 0.25s; z-index: 5;
+  }
+  .lesson-block .check-icon:hover { border-color: #10b981; transform: scale(1.15); }
+  .lesson-block .check-icon.checked {
+    background: #10b981; border-color: #10b981; color: #fff;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.6), 0 0 16px rgba(16, 185, 129, 0.3);
+    animation: glowPulse 2s ease-in-out infinite;
+  }
+  @keyframes glowPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(16, 185, 129, 0.6), 0 0 16px rgba(16, 185, 129, 0.3); }
+    50% { box-shadow: 0 0 12px rgba(16, 185, 129, 0.8), 0 0 24px rgba(16, 185, 129, 0.5); }
+  }
+
+  .lesson-block.vacation .lesson-name { color: #c0392b; }
+  .lesson-block.vacation .lesson-time,
+  .lesson-block.vacation .lesson-subject { color: #e74c3c; }
+
+  .drag-ghost {
+    position: fixed; pointer-events: none; z-index: 10000;
+    border-radius: 6px; padding: 4px 8px; font-size: 12px;
+    border-left: 4px solid; opacity: 0.85;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    transform: rotate(2deg); max-width: 220px;
+  }
+
+  .modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #fff; border-radius: 16px; padding: 28px;
+    width: 440px; max-width: 95vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    animation: modalIn 0.2s ease; max-height: 90vh; overflow-y: auto;
+  }
+  @keyframes modalIn {
+    from { transform: scale(0.9); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .modal h2 { font-size: 18px; margin-bottom: 20px; color: #1a1a2e; }
+  .modal label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 4px; margin-top: 14px; }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; padding: 10px 12px;
+    border: 2px solid #e8e8e8; border-radius: 8px;
+    font-size: 14px; outline: none;
+    transition: border-color 0.2s; background: #fff; font-family: inherit;
+  }
+  .modal input:focus, .modal select:focus, .modal textarea:focus { border-color: #6c5ce7; }
+  .modal textarea { resize: vertical; min-height: 80px; }
+
+  .school-select-group { display: flex; gap: 8px; margin-top: 6px; }
+  .school-radio { flex: 1; position: relative; }
+  .school-radio input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .school-radio label {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; padding: 10px 8px;
+    border: 2px solid #e8e8e8; border-radius: 8px;
+    cursor: pointer; font-size: 13px; font-weight: 600;
+    transition: all 0.2s; margin-top: 0 !important; text-align: center;
+  }
+  .school-radio label .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .school-radio input:checked + label { transform: scale(1.02); }
+  .school-radio.tetrika label { color: #2563eb; }
+  .school-radio.tetrika input:checked + label { background: #dbeafe; border-color: #2563eb; }
+  .school-radio.synergy label { color: #db2777; }
+  .school-radio.synergy input:checked + label { background: #fce7f3; border-color: #db2777; }
+  .school-radio.own label { color: #059669; }
+  .school-radio.own input:checked + label { background: #d1fae5; border-color: #059669; }
+
+  .type-toggle { display: flex; gap: 8px; margin-top: 6px; }
+  .type-radio { flex: 1; position: relative; }
+  .type-radio input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .type-radio label {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; padding: 10px 8px;
+    border: 2px solid #e8e8e8; border-radius: 8px;
+    cursor: pointer; font-size: 13px; font-weight: 600;
+    transition: all 0.2s; margin-top: 0 !important; text-align: center; color: #555;
+  }
+  .type-radio input:checked + label {
+    background: #f3f0ff; border-color: #6c5ce7; color: #6c5ce7; transform: scale(1.02);
+  }
+  .type-hint { font-size: 11px; color: #999; margin-top: 6px; font-style: italic; }
+
+  .modal-actions { display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
+  .modal-actions button {
+    flex: 1; padding: 10px; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: all 0.2s; min-width: 100px;
+  }
+  .btn-save { background: #6c5ce7; color: #fff; }
+  .btn-save:hover { background: #5a4bd1; }
+  .btn-vacation { background: #e74c3c; color: #fff; }
+  .btn-vacation:hover { background: #c0392b; }
+  .btn-delete { background: #eee; color: #666; }
+  .btn-delete:hover { background: #ddd; }
+  .btn-cancel { background: #f5f5f5; color: #666; }
+  .btn-cancel:hover { background: #eee; }
+
+  .vacation-badge {
+    display: inline-block; background: #e74c3c; color: #fff;
+    font-size: 10px; padding: 1px 6px; border-radius: 4px;
+    margin-left: 4px; font-weight: 700;
+  }
+
+  .legend { display: flex; gap: 20px; padding: 10px 24px; font-size: 13px; color: #666; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .legend-color { width: 16px; height: 16px; border-radius: 4px; }
+  .legend-color.tetrika { background: #dbeafe; border-left: 3px solid #2563eb; }
+  .legend-color.synergy { background: #fce7f3; border-left: 3px solid #db2777; }
+  .legend-color.own { background: #d1fae5; border-left: 3px solid #059669; }
+  .legend-color.vacation { background: #ffe0e0; border-left: 3px solid #e74c3c; }
+
+  .filters { display: flex; gap: 8px; padding: 8px 24px; flex-wrap: wrap; }
+  .filter-btn {
+    padding: 6px 14px; border: 2px solid #e0e0e0; border-radius: 20px;
+    background: #fff; cursor: pointer; font-size: 13px; font-weight: 600;
+    transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+  }
+  .filter-btn.active { border-width: 2px; }
+  .filter-btn[data-school="all"].active { border-color: #6c5ce7; background: #f3f0ff; }
+  .filter-btn[data-school="tetrika"].active { border-color: #2563eb; background: #dbeafe; }
+  .filter-btn[data-school="synergy"].active { border-color: #db2777; background: #fce7f3; }
+  .filter-btn[data-school="own"].active { border-color: #059669; background: #d1fae5; }
+  .filter-btn[data-school="vacation"].active { border-color: #e74c3c; background: #ffe0e0; }
+
+  .drag-hint { padding: 6px 24px; font-size: 12px; color: #888; font-style: italic; }
+
+  .todo-panel {
+    position: fixed; top: 80px; right: 20px; width: 320px;
+    background: #fff; border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    z-index: 50; max-height: calc(100vh - 100px);
+    overflow-y: auto; display: none;
+  }
+  .todo-panel.active { display: block; }
+  .todo-header {
+    padding: 16px; border-bottom: 1px solid #eee;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .todo-header h3 { font-size: 16px; color: #1a1a2e; }
+  .todo-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #999; }
+  .todo-section { padding: 16px; border-bottom: 1px solid #eee; }
+  .todo-section h4 { font-size: 14px; color: #666; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+  .todo-list { list-style: none; }
+  .todo-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px; margin-bottom: 6px;
+    background: #f8f9fa; border-radius: 6px; font-size: 13px;
+  }
+  .todo-item.done { opacity: 0.5; text-decoration: line-through; }
+  .todo-item-text { flex: 1; word-break: break-word; }
+  .todo-delete { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 16px; padding: 0 4px; }
+  .todo-input-group { display: flex; gap: 6px; margin-top: 8px; }
+  .todo-input-group input {
+    flex: 1; padding: 8px; border: 2px solid #e8e8e8;
+    border-radius: 6px; font-size: 13px;
+  }
+  .todo-input-group button {
+    padding: 8px 12px; background: #6c5ce7; color: #fff;
+    border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+
+  .students-view { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .students-view.active { display: block; }
+  .students-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
+  .student-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .student-card h3 { font-size: 18px; margin-bottom: 12px; color: #1a1a2e; }
+  .student-field { margin-bottom: 12px; }
+  .student-field label { display: block; font-size: 12px; font-weight: 600; color: #666; margin-bottom: 4px; text-transform: uppercase; }
+  .student-field textarea {
+    width: 100%; padding: 8px; border: 2px solid #e8e8e8;
+    border-radius: 6px; font-size: 13px; font-family: inherit;
+    resize: vertical; min-height: 60px;
+  }
+  .student-field textarea:focus { outline: none; border-color: #6c5ce7; }
+  .add-student-btn { padding: 12px 24px; background: #6c5ce7; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+  .add-student-btn:hover { background: #5a4bd1; }
+
+  .todo-toggle-btn {
+    position: fixed; top: 80px; right: 20px;
+    padding: 12px 20px; background: #6c5ce7; color: #fff;
+    border: none; border-radius: 8px; cursor: pointer;
+    font-size: 14px; font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15); z-index: 40;
+  }
+  .todo-toggle-btn:hover { background: #5a4bd1; }
+
+  .sync-hint {
+    padding: 8px 24px;
+    font-size: 12px;
+    color: #666;
+    background: #fff3cd;
+    border-left: 4px solid #f59e0b;
+  }
+
+  @media (max-width: 768px) {
+    .days-grid { min-width: 600px; }
+    .header { flex-wrap: wrap; gap: 8px; }
+    .todo-panel { width: calc(100% - 40px); right: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📅 Расписание занятий</h1>
+  <div class="header-controls">
+    <div class="view-switcher">
+      <button class="view-btn active" onclick="switchView('schedule', this)">Расписание</button>
+      <button class="view-btn" onclick="switchView('students', this)">Ученики</button>
+    </div>
+    <button class="btn-prev" onclick="changeWeek(-1)">← Пред.</button>
+    <span class="week-label" id="weekLabel"></span>
+    <button class="btn-next" onclick="changeWeek(1)">След. →</button>
+    <button class="btn-today" onclick="goToday()">Сегодня</button>
+    <button class="btn-migrate" onclick="shiftAllLessons(1)">⏭ +1 день</button>
+    <button class="btn-clear" onclick="clearWeek()">Очистить неделю</button>
+    <button class="btn-export" onclick="exportData()">💾 Экспорт</button>
+    <button class="btn-import" onclick="document.getElementById('importFile').click()">📥 Импорт</button>
+    <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+  </div>
+</div>
+
+<div class="sync-hint">
+  ⚠️ Данные хранятся в браузере. Чтобы перенести на другое устройство — нажми <b>💾 Экспорт</b>, сохрани файл, потом на другом устройстве <b> Импорт</b>.
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-color tetrika"></div> Тетрика</div>
+  <div class="legend-item"><div class="legend-color synergy"></div> Синергия</div>
+  <div class="legend-item"><div class="legend-color own"></div> Свои ученики</div>
+  <div class="legend-item"><div class="legend-color vacation"></div> Отпуск / Не будет</div>
+</div>
+
+<div class="filters">
+  <button class="filter-btn active" data-school="all" onclick="toggleFilter(this)">📋 Все</button>
+  <button class="filter-btn active" data-school="tetrika" onclick="toggleFilter(this)">🔵 Тетрика</button>
+  <button class="filter-btn active" data-school="synergy" onclick="toggleFilter(this)">🩷 Синергия</button>
+  <button class="filter-btn active" data-school="own" onclick="toggleFilter(this)"> Свои</button>
+  <button class="filter-btn active" data-school="vacation" onclick="toggleFilter(this)">🔴 Отпуск</button>
+</div>
+
+<div class="drag-hint">💡 Клик — редактировать | Зажать и потянуть — переместить | Зелёный кружок — урок проведён</div>
+
+<div class="schedule-container" id="scheduleView">
+  <div class="time-column" id="timeColumn"></div>
+  <div class="days-grid" id="daysGrid"></div>
+</div>
+
+<div class="students-view" id="studentsView">
+  <h2 style="margin-bottom: 20px;">👥 Мои ученики</h2>
+  <button class="add-student-btn" onclick="addStudent()">+ Добавить ученика</button>
+  <div class="students-grid" id="studentsGrid"></div>
+</div>
+
+<button class="todo-toggle-btn" onclick="toggleTodoPanel()"> To-do</button>
+
+<div class="todo-panel" id="todoPanel">
+  <div class="todo-header">
+    <h3>📝 Список дел</h3>
+    <button class="todo-close" onclick="toggleTodoPanel()">×</button>
+  </div>
+  <div class="todo-section">
+    <h4>🔥 To do today</h4>
+    <ul class="todo-list" id="todoTodayList"></ul>
+    <div class="todo-input-group">
+      <input type="text" id="todoTodayInput" placeholder="Добавить дело..." onkeypress="if(event.key==='Enter')addTodo('today')">
+      <button onclick="addTodo('today')">+</button>
+    </div>
+  </div>
+  <div class="todo-section">
+    <h4>📌 To do later</h4>
+    <ul class="todo-list" id="todoLaterList"></ul>
+    <div class="todo-input-group">
+      <input type="text" id="todoLaterInput" placeholder="Добавить дело..." onkeypress="if(event.key==='Enter')addTodo('later')">
+      <button onclick="addTodo('later')">+</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">Добавить занятие</h2>
+    <label>Имя ученика</label>
+    <input type="text" id="inputName" placeholder="Например: Александр">
+    <label>Предмет / Класс</label>
+    <input type="text" id="inputSubject" placeholder="Например: Английский язык, 3 класс">
+    <label>Школа</label>
+    <div class="school-select-group">
+      <div class="school-radio tetrika">
+        <input type="radio" name="school" id="schoolTetrika" value="tetrika" checked>
+        <label for="schoolTetrika"><span class="dot" style="background:#2563eb"></span> Тетрика</label>
+      </div>
+      <div class="school-radio synergy">
+        <input type="radio" name="school" id="schoolSynergy" value="synergy">
+        <label for="schoolSynergy"><span class="dot" style="background:#db2777"></span> Синергия</label>
+      </div>
+      <div class="school-radio own">
+        <input type="radio" name="school" id="schoolOwn" value="own">
+        <label for="schoolOwn"><span class="dot" style="background:#059669"></span> Свои</label>
+      </div>
+    </div>
+    <label>Тип занятия</label>
+    <div class="type-toggle">
+      <div class="type-radio">
+        <input type="radio" name="lessonType" id="typeOneTime" value="onetime" checked>
+        <label for="typeOneTime">📌 Одноразовое</label>
+      </div>
+      <div class="type-radio">
+        <input type="radio" name="lessonType" id="typeRecurring" value="recurring">
+        <label for="typeRecurring">🔁 Постоянное</label>
+      </div>
+    </div>
+    <div class="type-hint" id="typeHint">Только на эту дату</div>
+    <label>Время начала</label>
+    <input type="time" id="inputStart" min="08:00" max="20:00" step="900">
+    <label>Время окончания</label>
+    <input type="time" id="inputEnd" min="08:00" max="20:00" step="900">
+    <div class="modal-actions">
+      <button class="btn-save" onclick="saveLesson()">💾 Сохранить</button>
+      <button class="btn-vacation" onclick="saveVacation()">🏖 Отпуск</button>
+      <button class="btn-delete" onclick="deleteLesson()" id="btnDelete" style="display:none"> Удалить</button>
+      <button class="btn-cancel" onclick="closeModal()">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const START_HOUR = 8;
+const END_HOUR = 20;
+const CELL_HEIGHT = 60;
+const DRAG_THRESHOLD = 5;
+
+const SCHOOL_NAMES = { tetrika: 'Тетрика', synergy: 'Синергия', own: 'Свои' };
+
+let currentWeekStart = getMonday(new Date());
+let lessons = {};
+let recurringLessons = [];
+let editingKey = null;
+let selectedDate = null;
+let activeFilters = new Set(['all', 'tetrika', 'synergy', 'own', 'vacation']);
+let todos = { today: [], later: [] };
+let students = {};
+let currentView = 'schedule';
+let completedMap = {};
+let dragState = null;
+
+function getMonday(d) {
+  d = new Date(d);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function formatDate(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(d) {
+  return d.getDate() + ' ' + ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'][d.getMonth()];
+}
+
+function getDayOfWeekFromDateStr(dateStr) {
+  const parts = dateStr.split('-');
+  const year = parseInt(parts[0]);
+  const month = parseInt(parts[1]) - 1;
+  const day = parseInt(parts[2]);
+  const d = new Date(year, month, day);
+  const jsDay = d.getDay();
+  return jsDay === 0 ? 6 : jsDay - 1;
+}
+
+function makeCompletedKey(date, type, idx) {
+  return `${date}__${type}__${idx}`;
+}
+
+function isCompleted(date, type, idx) {
+  return !!completedMap[makeCompletedKey(date, type, idx)];
+}
+
+// ====== ЭКСПОРТ / ИМПОРТ ======
+function exportData() {
+  const data = {
+    lessons,
+    recurringLessons,
+    completedMap,
+    todos,
+    students,
+    exportDate: new Date().toISOString(),
+    version: 2
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `schedule-backup-${formatDate(new Date())}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('✅ Файл сохранён! Перенеси его на другое устройство и нажми "Импорт".');
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      
+      if (!confirm(`Загрузить данные из файла?\n\nЭто ЗАМЕНИТ все текущие данные!\nДата экспорта: ${data.exportDate || 'неизвестно'}\n\nНажми ОК для подтверждения.`)) {
+        return;
+      }
+      
+      lessons = data.lessons || {};
+      recurringLessons = (data.recurringLessons || []).map(normalizeLesson);
+      completedMap = data.completedMap || {};
+      todos = data.todos || { today: [], later: [] };
+      students = data.students || {};
+      
+      saveAll();
+      saveTodos();
+      saveStudents();
+      
+      buildGrid();
+      renderTodos();
+      if (currentView === 'students') renderStudents();
+      
+      alert('✅ Данные успешно загружены!');
+    } catch (err) {
+      alert('❌ Ошибка чтения файла: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function switchView(view, btn) {
+  currentView = view;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  
+  if (view === 'schedule') {
+    document.getElementById('scheduleView').style.display = 'flex';
+    document.getElementById('studentsView').classList.remove('active');
+    document.querySelector('.legend').style.display = 'flex';
+    document.querySelector('.filters').style.display = 'flex';
+    document.querySelector('.drag-hint').style.display = 'block';
+    document.querySelector('.todo-toggle-btn').style.display = 'block';
+    document.querySelector('.sync-hint').style.display = 'block';
+  } else {
+    document.getElementById('scheduleView').style.display = 'none';
+    document.getElementById('studentsView').classList.add('active');
+    document.querySelector('.legend').style.display = 'none';
+    document.querySelector('.filters').style.display = 'none';
+    document.querySelector('.drag-hint').style.display = 'none';
+    document.querySelector('.todo-toggle-btn').style.display = 'none';
+    document.querySelector('.sync-hint').style.display = 'none';
+    renderStudents();
+  }
+}
+
+function shiftAllLessons(days) {
+  const count = days > 0 ? `+${days}` : days;
+  if (!confirm(`Сдвинуть ВСЕ занятия на ${count} день (дни)?\n\nЭто затронет только одноразовые уроки.\nПостоянные уроки НЕ изменятся.`)) return;
+
+  let shiftedCount = 0;
+  const newLessons = {};
+  const newCompletedMap = {};
+
+  for (const [dateStr, dayLessons] of Object.entries(lessons)) {
+    const parts = dateStr.split('-');
+    const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    d.setDate(d.getDate() + days);
+    const newDate = formatDate(d);
+    newLessons[newDate] = dayLessons.map(l => ({...l}));
+    shiftedCount += dayLessons.length;
+  }
+
+  for (const [key, val] of Object.entries(completedMap)) {
+    const parts = key.split('__');
+    if (parts[1] === 'onetime') {
+      const oldDate = parts[0];
+      const idx = parts[2];
+      const dateParts = oldDate.split('-');
+      const d = new Date(parseInt(dateParts[0]), parseInt(dateParts[1]) - 1, parseInt(dateParts[2]));
+      d.setDate(d.getDate() + days);
+      const newDate = formatDate(d);
+      newCompletedMap[makeCompletedKey(newDate, 'onetime', idx)] = val;
+    } else {
+      newCompletedMap[key] = val;
+    }
+  }
+
+  lessons = newLessons;
+  completedMap = newCompletedMap;
+  saveAll();
+  renderLessons();
+  alert(`✅ Готово! Сдвинуто ${shiftedCount} занятий на ${count} день.`);
+}
+
+function loadLessons() {
+  const raw = localStorage.getItem('scheduleLessons');
+  if (!raw) return;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      lessons = {};
+      parsed.forEach(l => {
+        if (l.date) {
+          if (!lessons[l.date]) lessons[l.date] = [];
+          lessons[l.date].push(normalizeLesson(l));
+        }
+      });
+      saveAll();
+      return;
+    }
+    if (parsed.lessons !== undefined || parsed.recurringLessons !== undefined) {
+      lessons = parsed.lessons || {};
+      recurringLessons = (parsed.recurringLessons || []).map(normalizeLesson);
+      
+      if (parsed.completedMap) {
+        completedMap = parsed.completedMap;
+      } else {
+        for (const [date, arr] of Object.entries(lessons)) {
+          arr.forEach((l, idx) => {
+            if (l.completed) completedMap[makeCompletedKey(date, 'onetime', idx)] = true;
+          });
+        }
+      }
+      
+      let needResave = false;
+      recurringLessons.forEach((l, idx) => {
+        if (l._legacyDate) {
+          l.dayOfWeek = getDayOfWeekFromDateStr(l._legacyDate);
+          delete l._legacyDate;
+          needResave = true;
+        }
+        if (l.completed !== undefined) { delete l.completed; needResave = true; }
+      });
+      for (const date of Object.keys(lessons)) {
+        lessons[date].forEach(l => {
+          if (l.completed !== undefined) { delete l.completed; needResave = true; }
+        });
+      }
+      if (needResave) saveAll();
+      return;
+    }
+    lessons = {};
+    for (const [date, arr] of Object.entries(parsed)) {
+      if (Array.isArray(arr)) lessons[date] = arr.map(normalizeLesson);
+    }
+    saveAll();
+  } catch (e) { console.error('Ошибка загрузки данных:', e); }
+}
+
+function normalizeLesson(l) {
+  return {
+    name: l.name || '',
+    subject: l.subject || '',
+    start: l.start || '09:00',
+    end: l.end || '10:00',
+    school: l.school || 'own',
+    vacation: !!l.vacation,
+    recurring: !!l.recurring,
+    dayOfWeek: l.dayOfWeek !== undefined ? l.dayOfWeek : 0
+  };
+}
+
+function saveAll() {
+  localStorage.setItem('scheduleLessons', JSON.stringify({ lessons, recurringLessons, completedMap }));
+}
+
+function loadTodos() {
+  const raw = localStorage.getItem('scheduleTodos');
+  if (raw) { try { todos = JSON.parse(raw); } catch (e) { todos = { today: [], later: [] }; } }
+}
+
+function saveTodos() {
+  localStorage.setItem('scheduleTodos', JSON.stringify(todos));
+}
+
+function loadStudents() {
+  const raw = localStorage.getItem('scheduleStudents');
+  if (raw) { try { students = JSON.parse(raw); } catch (e) { students = {}; } }
+}
+
+function saveStudents() {
+  localStorage.setItem('scheduleStudents', JSON.stringify(students));
+}
+
+function buildTimeColumn() {
+  const col = document.getElementById('timeColumn');
+  col.innerHTML = '<div class="time-header">Время</div>';
+  for (let h = START_HOUR; h < END_HOUR; h++) {
+    const div = document.createElement('div');
+    div.className = 'time-slot';
+    div.textContent = String(h).padStart(2, '0') + ':00';
+    col.appendChild(div);
+  }
+}
+
+function buildGrid() {
+  const grid = document.getElementById('daysGrid');
+  grid.innerHTML = '';
+  const today = formatDate(new Date());
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(currentWeekStart);
+    d.setDate(d.getDate() + i);
+    const header = document.createElement('div');
+    header.className = 'day-header' + (formatDate(d) === today ? ' today' : '');
+    header.innerHTML = `<span class="day-name">${DAYS[i]}</span><span class="day-date">${d.getDate()}</span>`;
+    grid.appendChild(header);
+  }
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(currentWeekStart);
+    d.setDate(d.getDate() + i);
+    const dateStr = formatDate(d);
+    const col = document.createElement('div');
+    col.className = 'day-column';
+    for (let h = START_HOUR; h < END_HOUR; h++) {
+      const cell = document.createElement('div');
+      cell.className = 'hour-cell';
+      cell.dataset.date = dateStr;
+      cell.dataset.hour = h;
+      cell.addEventListener('click', () => openModal(dateStr, h));
+      col.appendChild(cell);
+    }
+    grid.appendChild(col);
+  }
+  renderLessons();
+  updateWeekLabel();
+}
+
+function updateWeekLabel() {
+  const end = new Date(currentWeekStart);
+  end.setDate(end.getDate() + 6);
+  document.getElementById('weekLabel').textContent =
+    formatDisplayDate(currentWeekStart) + ' — ' + formatDisplayDate(end) + ' ' + end.getFullYear();
+}
+
+function renderLessons() {
+  document.querySelectorAll('.lesson-block').forEach(el => el.remove());
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(currentWeekStart);
+    d.setDate(d.getDate() + i);
+    const dateStr = formatDate(d);
+    const col = document.querySelectorAll('.day-column')[i];
+
+    const dayLessons = [];
+    const oneTime = lessons[dateStr] || [];
+    oneTime.forEach((l, idx) => dayLessons.push({ ...l, _type: 'onetime', _idx: idx, _date: dateStr }));
+
+    const jsDay = d.getDay();
+    const ourDay = jsDay === 0 ? 6 : jsDay - 1;
+    recurringLessons.forEach((l, idx) => {
+      if (l.dayOfWeek === ourDay) dayLessons.push({ ...l, _type: 'recurring', _idx: idx, _date: dateStr });
+    });
+
+    dayLessons.forEach(lesson => {
+      const filterKey = lesson.vacation ? 'vacation' : (lesson.school || 'own');
+      if (!activeFilters.has('all') && !activeFilters.has(filterKey)) return;
+
+      const startH = parseInt(lesson.start.split(':')[0]);
+      const startM = parseInt(lesson.start.split(':')[1]);
+      const endH = parseInt(lesson.end.split(':')[0]);
+      const endM = parseInt(lesson.end.split(':')[1]);
+
+      const top = (startH - START_HOUR) * CELL_HEIGHT + (startM / 60) * CELL_HEIGHT;
+      const height = ((endH * 60 + endM) - (startH * 60 + startM)) / 60 * CELL_HEIGHT;
+
+      const block = document.createElement('div');
+      block.className = 'lesson-block ' + (lesson.vacation ? 'vacation' : 'school-' + (lesson.school || 'own'));
+      block.style.top = top + 'px';
+      block.style.height = Math.max(height, 28) + 'px';
+
+      const recurringIcon = lesson._type === 'recurring' ? '<span class="recurring-icon" title="Постоянное">🔁</span>' : '';
+      const completed = isCompleted(lesson._date, lesson._type, lesson._idx);
+      const checkIcon = `<div class="check-icon ${completed ? 'checked' : ''}" onclick="toggleCompleted(event, '${lesson._type}', '${lesson._date}', ${lesson._idx})">${completed ? '✓' : ''}</div>`;
+      
+      block.innerHTML = `
+        ${checkIcon}
+        <div class="lesson-name">${lesson.name}${lesson.vacation ? '<span class="vacation-badge">ОТПУСК</span>' : ''}${recurringIcon}</div>
+        <div class="lesson-time">${lesson.start} – ${lesson.end}</div>
+        <div class="lesson-subject">${lesson.subject}</div>
+        ${!lesson.vacation ? `<div class="lesson-school">${SCHOOL_NAMES[lesson.school] || 'Свои'}</div>` : ''}
+      `;
+
+      block._lessonType = lesson._type;
+      block._lessonDate = lesson._date;
+      block._lessonIdx = lesson._idx;
+
+      block.addEventListener('mousedown', onBlockMouseDown);
+      block.addEventListener('click', onBlockClick);
+
+      col.appendChild(block);
+    });
+  }
+}
+
+function toggleCompleted(e, type, date, idx) {
+  e.stopPropagation();
+  e.preventDefault();
+  const key = makeCompletedKey(date, type, idx);
+  if (completedMap[key]) { delete completedMap[key]; }
+  else { completedMap[key] = true; }
+  saveAll();
+  renderLessons();
+}
+
+function onBlockMouseDown(e) {
+  if (e.button !== 0) return;
+  if (e.target.closest('.check-icon') || e.target.closest('.vacation-badge')) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const block = e.currentTarget;
+
+  dragState = {
+    type: block._lessonType,
+    date: block._lessonDate,
+    index: block._lessonIdx,
+    startX: e.clientX,
+    startY: e.clientY,
+    sourceBlock: block,
+    isDragging: false,
+    ghost: null
+  };
+
+  document.addEventListener('mousemove', onGlobalMouseMove);
+  document.addEventListener('mouseup', onGlobalMouseUp);
+}
+
+function onGlobalMouseMove(e) {
+  if (!dragState) return;
+
+  const dx = e.clientX - dragState.startX;
+  const dy = e.clientY - dragState.startY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  if (!dragState.isDragging && distance > DRAG_THRESHOLD) {
+    startDragGhost(e);
+  }
+
+  if (dragState.isDragging) {
+    dragState.ghost.style.left = (e.clientX - dragState.offsetX) + 'px';
+    dragState.ghost.style.top = (e.clientY - dragState.offsetY) + 'px';
+
+    document.querySelectorAll('.hour-cell.drag-over').forEach(c => c.classList.remove('drag-over'));
+    dragState.ghost.style.display = 'none';
+    const cell = document.elementFromPoint(e.clientX, e.clientY);
+    dragState.ghost.style.display = '';
+    const hourCell = cell ? cell.closest('.hour-cell') : null;
+    if (hourCell) hourCell.classList.add('drag-over');
+  }
+}
+
+function startDragGhost(e) {
+  dragState.isDragging = true;
+  const block = dragState.sourceBlock;
+  const rect = block.getBoundingClientRect();
+  dragState.offsetX = e.clientX - rect.left;
+  dragState.offsetY = e.clientY - rect.top;
+
+  const ghost = block.cloneNode(true);
+  ghost.className = 'drag-ghost ' + block.className.replace('lesson-block', '').trim();
+  ghost.style.width = rect.width + 'px';
+  ghost.style.height = rect.height + 'px';
+  ghost.style.left = (e.clientX - dragState.offsetX) + 'px';
+  ghost.style.top = (e.clientY - dragState.offsetY) + 'px';
+  document.body.appendChild(ghost);
+  dragState.ghost = ghost;
+
+  block.classList.add('dragging');
+}
+
+function onGlobalMouseUp(e) {
+  document.removeEventListener('mousemove', onGlobalMouseMove);
+  document.removeEventListener('mouseup', onGlobalMouseUp);
+
+  if (!dragState) return;
+
+  document.querySelectorAll('.hour-cell.drag-over').forEach(c => c.classList.remove('drag-over'));
+
+  const wasDragging = dragState.isDragging;
+  const savedType = dragState.type;
+  const savedDate = dragState.date;
+  const savedIndex = dragState.index;
+
+  if (wasDragging && dragState.ghost) {
+    dragState.ghost.style.display = 'none';
+    const cell = document.elementFromPoint(e.clientX, e.clientY);
+    dragState.ghost.style.display = '';
+    const hourCell = cell ? cell.closest('.hour-cell') : null;
+
+    if (hourCell) {
+      const newDate = hourCell.dataset.date;
+      const newHour = parseInt(hourCell.dataset.hour);
+
+      const lesson = savedType === 'recurring'
+        ? recurringLessons[savedIndex]
+        : lessons[savedDate][savedIndex];
+
+      const startH = parseInt(lesson.start.split(':')[0]);
+      const startM = parseInt(lesson.start.split(':')[1]);
+      const endH = parseInt(lesson.end.split(':')[0]);
+      const endM = parseInt(lesson.end.split(':')[1]);
+      const durationMin = (endH * 60 + endM) - (startH * 60 + startM);
+
+      const newStart = `${String(newHour).padStart(2,'0')}:00`;
+      const newEndTotal = newHour * 60 + durationMin;
+      const newEndH = Math.floor(newEndTotal / 60);
+      const newEndM = newEndTotal % 60;
+      const newEnd = `${String(newEndH).padStart(2,'0')}:${String(newEndM).padStart(2,'0')}`;
+
+      if (savedType === 'recurring') {
+        const oldLesson = recurringLessons[savedIndex];
+        const newDayOfWeek = getDayOfWeekFromDateStr(newDate);
+        recurringLessons[savedIndex] = {
+          ...oldLesson, start: newStart, end: newEnd, dayOfWeek: newDayOfWeek
+        };
+        const oldKey = makeCompletedKey(savedDate, 'recurring', savedIndex);
+        const newKey = makeCompletedKey(newDate, 'recurring', savedIndex);
+        if (completedMap[oldKey]) {
+          completedMap[newKey] = true;
+          delete completedMap[oldKey];
+        }
+      } else {
+        const oldLesson = lessons[savedDate][savedIndex];
+        lessons[savedDate].splice(savedIndex, 1);
+        if (lessons[savedDate].length === 0) delete lessons[savedDate];
+        if (!lessons[newDate]) lessons[newDate] = [];
+        const newIdx = lessons[newDate].length;
+        lessons[newDate].push({ ...oldLesson, start: newStart, end: newEnd });
+        
+        const oldKey = makeCompletedKey(savedDate, 'onetime', savedIndex);
+        const newKey = makeCompletedKey(newDate, 'onetime', newIdx);
+        if (completedMap[oldKey]) {
+          completedMap[newKey] = true;
+          delete completedMap[oldKey];
+        }
+      }
+      saveAll();
+    }
+
+    dragState.ghost.remove();
+    dragState.sourceBlock.classList.remove('dragging');
+  }
+
+  dragState = null;
+  renderLessons();
+
+  if (!wasDragging) {
+    setTimeout(() => {
+      openModalEdit(savedType, savedDate, savedIndex);
+    }, 50);
+  }
+}
+
+function onBlockClick(e) {}
+
+function toggleFilter(btn) {
+  const school = btn.dataset.school;
+  if (school === 'all') {
+    if (activeFilters.has('all')) {
+      activeFilters.clear();
+      btn.classList.remove('active');
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    } else {
+      activeFilters = new Set(['all', 'tetrika', 'synergy', 'own', 'vacation']);
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.add('active'));
+    }
+  } else {
+    if (activeFilters.has(school)) {
+      activeFilters.delete(school);
+      btn.classList.remove('active');
+    } else {
+      activeFilters.add(school);
+      btn.classList.add('active');
+    }
+    const allBtn = document.querySelector('.filter-btn[data-school="all"]');
+    if (activeFilters.has('tetrika') && activeFilters.has('synergy') && activeFilters.has('own') && activeFilters.has('vacation')) {
+      activeFilters.add('all');
+      allBtn.classList.add('active');
+    } else {
+      activeFilters.delete('all');
+      allBtn.classList.remove('active');
+    }
+  }
+  renderLessons();
+}
+
+function toggleTodoPanel() {
+  document.getElementById('todoPanel').classList.toggle('active');
+  renderTodos();
+}
+
+function renderTodos() {
+  const todayList = document.getElementById('todoTodayList');
+  const laterList = document.getElementById('todoLaterList');
+  todayList.innerHTML = '';
+  laterList.innerHTML = '';
+  todos.today.forEach((todo, idx) => todayList.appendChild(createTodoItem(todo, 'today', idx)));
+  todos.later.forEach((todo, idx) => laterList.appendChild(createTodoItem(todo, 'later', idx)));
+}
+
+function createTodoItem(todo, list, idx) {
+  const li = document.createElement('li');
+  li.className = 'todo-item' + (todo.done ? ' done' : '');
+  li.innerHTML = `
+    <input type="checkbox" ${todo.done ? 'checked' : ''} onchange="toggleTodo('${list}', ${idx})">
+    <span class="todo-item-text">${todo.text}</span>
+    <button class="todo-delete" onclick="deleteTodo('${list}', ${idx})">×</button>
+  `;
+  return li;
+}
+
+function addTodo(list) {
+  const input = document.getElementById(list === 'today' ? 'todoTodayInput' : 'todoLaterInput');
+  const text = input.value.trim();
+  if (text) {
+    todos[list].push({ text, done: false });
+    saveTodos();
+    renderTodos();
+    input.value = '';
+  }
+}
+
+function toggleTodo(list, idx) {
+  todos[list][idx].done = !todos[list][idx].done;
+  saveTodos();
+  renderTodos();
+}
+
+function deleteTodo(list, idx) {
+  todos[list].splice(idx, 1);
+  saveTodos();
+  renderTodos();
+}
+
+function addStudent() {
+  const name = prompt('Имя ученика:');
+  if (name && name.trim()) {
+    students[name.trim()] = { goals: '', interests: '', problems: '', notes: '' };
+    saveStudents();
+    renderStudents();
+  }
+}
+
+function renderStudents() {
+  const grid = document.getElementById('studentsGrid');
+  grid.innerHTML = '';
+  for (const [name, data] of Object.entries(students)) {
+    const card = document.createElement('div');
+    card.className = 'student-card';
+    card.innerHTML = `
+      <h3>${name} <button onclick="deleteStudent('${name}')" style="float:right;background:none;border:none;color:#e74c3c;cursor:pointer;font-size:18px;">×</button></h3>
+      <div class="student-field">
+        <label>🎯 Цели</label>
+        <textarea onchange="updateStudent('${name}', 'goals', this.value)">${data.goals || ''}</textarea>
+      </div>
+      <div class="student-field">
+        <label>💡 Интересы</label>
+        <textarea onchange="updateStudent('${name}', 'interests', this.value)">${data.interests || ''}</textarea>
+      </div>
+      <div class="student-field">
+        <label>⚠️ Проблемные моменты</label>
+        <textarea onchange="updateStudent('${name}', 'problems', this.value)">${data.problems || ''}</textarea>
+      </div>
+      <div class="student-field">
+        <label>📝 Заметки</label>
+        <textarea onchange="updateStudent('${name}', 'notes', this.value)">${data.notes || ''}</textarea>
+      </div>
+    `;
+    grid.appendChild(card);
+  }
+}
+
+function updateStudent(name, field, value) {
+  if (students[name]) {
+    students[name][field] = value;
+    saveStudents();
+  }
+}
+
+function deleteStudent(name) {
+  if (confirm(`Удалить ученика "${name}"?`)) {
+    delete students[name];
+    saveStudents();
+    renderStudents();
+  }
+}
+
+function openModal(dateStr, hour) {
+  editingKey = null;
+  selectedDate = dateStr;
+  document.getElementById('modalTitle').textContent = 'Добавить занятие';
+  document.getElementById('inputName').value = '';
+  document.getElementById('inputSubject').value = '';
+  document.getElementById('schoolTetrika').checked = true;
+  document.getElementById('typeOneTime').checked = true;
+  document.getElementById('typeHint').textContent = 'Только на эту дату';
+  document.getElementById('inputStart').value = String(hour).padStart(2, '0') + ':00';
+  document.getElementById('inputEnd').value = String(hour + 1).padStart(2, '0') + ':00';
+  document.getElementById('btnDelete').style.display = 'none';
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function openModalEdit(type, dateStr, idx) {
+  if (type === null || dateStr === null || idx === null) return;
+  let lesson;
+  if (type === 'recurring') {
+    lesson = recurringLessons[idx];
+  } else {
+    lesson = lessons[dateStr] && lessons[dateStr][idx];
+  }
+  if (!lesson) return;
+
+  editingKey = { type, date: dateStr, index: idx };
+  selectedDate = dateStr;
+  document.getElementById('modalTitle').textContent = 'Редактировать занятие';
+  document.getElementById('inputName').value = lesson.name;
+  document.getElementById('inputSubject').value = lesson.subject;
+  const school = lesson.school || 'own';
+  const schoolId = 'school' + school.charAt(0).toUpperCase() + school.slice(1);
+  if (document.getElementById(schoolId)) document.getElementById(schoolId).checked = true;
+  document.getElementById(type === 'recurring' ? 'typeRecurring' : 'typeOneTime').checked = true;
+  document.getElementById('typeHint').textContent = type === 'recurring' ? 'Будет повторяться каждую неделю' : 'Только на эту дату';
+  document.getElementById('inputStart').value = lesson.start;
+  document.getElementById('inputEnd').value = lesson.end;
+  document.getElementById('btnDelete').style.display = 'block';
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('active');
+  editingKey = null;
+}
+
+function getSelectedSchool() {
+  return document.querySelector('input[name="school"]:checked').value;
+}
+
+function getSelectedType() {
+  return document.querySelector('input[name="lessonType"]:checked').value;
+}
+
+function saveLesson() {
+  const name = document.getElementById('inputName').value.trim();
+  const subject = document.getElementById('inputSubject').value.trim();
+  const start = document.getElementById('inputStart').value;
+  const end = document.getElementById('inputEnd').value;
+  const school = getSelectedSchool();
+  const type = getSelectedType();
+
+  if (!name) { alert('Введите имя ученика'); return; }
+  if (!start || !end) { alert('Укажите время'); return; }
+  if (start >= end) { alert('Время окончания должно быть позже начала'); return; }
+
+  const baseLesson = { name, subject, start, end, school, vacation: false };
+
+  if (editingKey) {
+    if (editingKey.type === 'recurring') {
+      if (type === 'recurring') {
+        recurringLessons[editingKey.index] = { ...baseLesson, dayOfWeek: recurringLessons[editingKey.index].dayOfWeek, recurring: true };
+      } else {
+        recurringLessons.splice(editingKey.index, 1);
+        if (!lessons[editingKey.date]) lessons[editingKey.date] = [];
+        lessons[editingKey.date].push(baseLesson);
+      }
+    } else {
+      if (type === 'recurring') {
+        lessons[editingKey.date].splice(editingKey.index, 1);
+        if (lessons[editingKey.date].length === 0) delete lessons[editingKey.date];
+        const dayOfWeek = getDayOfWeekFromDateStr(editingKey.date);
+        recurringLessons.push({ ...baseLesson, dayOfWeek, recurring: true });
+      } else {
+        lessons[editingKey.date][editingKey.index] = baseLesson;
+      }
+    }
+  } else {
+    if (type === 'recurring') {
+      const dayOfWeek = getDayOfWeekFromDateStr(selectedDate);
+      recurringLessons.push({ ...baseLesson, dayOfWeek, recurring: true });
+    } else {
+      if (!lessons[selectedDate]) lessons[selectedDate] = [];
+      lessons[selectedDate].push(baseLesson);
+    }
+  }
+
+  saveAll();
+  renderLessons();
+  closeModal();
+}
+
+function saveVacation() {
+  const name = document.getElementById('inputName').value.trim();
+  const subject = document.getElementById('inputSubject').value.trim();
+  const start = document.getElementById('inputStart').value;
+  const end = document.getElementById('inputEnd').value;
+  const school = getSelectedSchool();
+  const type = getSelectedType();
+
+  if (!name) { alert('Введите имя ученика'); return; }
+
+  const baseLesson = { name, subject: subject || 'Отпуск', start, end, school, vacation: true };
+
+  if (editingKey) {
+    if (editingKey.type === 'recurring') {
+      if (type === 'recurring') {
+        recurringLessons[editingKey.index] = { ...baseLesson, dayOfWeek: recurringLessons[editingKey.index].dayOfWeek, recurring: true };
+      } else {
+        recurringLessons.splice(editingKey.index, 1);
+        if (!lessons[editingKey.date]) lessons[editingKey.date] = [];
+        lessons[editingKey.date].push(baseLesson);
+      }
+    } else {
+      if (type === 'recurring') {
+        lessons[editingKey.date].splice(editingKey.index, 1);
+        if (lessons[editingKey.date].length === 0) delete lessons[editingKey.date];
+        const dayOfWeek = getDayOfWeekFromDateStr(editingKey.date);
+        recurringLessons.push({ ...baseLesson, dayOfWeek, recurring: true });
+      } else {
+        lessons[editingKey.date][editingKey.index] = baseLesson;
+      }
+    }
+  } else {
+    if (type === 'recurring') {
+      const dayOfWeek = getDayOfWeekFromDateStr(selectedDate);
+      recurringLessons.push({ ...baseLesson, dayOfWeek, recurring: true });
+    } else {
+      if (!lessons[selectedDate]) lessons[selectedDate] = [];
+      lessons[selectedDate].push(baseLesson);
+    }
+  }
+
+  saveAll();
+  renderLessons();
+  closeModal();
+}
+
+function deleteLesson() {
+  if (!editingKey) return;
+  if (!confirm('Удалить это занятие?')) return;
+
+  if (editingKey.type === 'recurring') {
+    recurringLessons.splice(editingKey.index, 1);
+  } else {
+    lessons[editingKey.date].splice(editingKey.index, 1);
+    if (lessons[editingKey.date].length === 0) delete lessons[editingKey.date];
+  }
+
+  saveAll();
+  renderLessons();
+  closeModal();
+}
+
+function changeWeek(dir) {
+  currentWeekStart.setDate(currentWeekStart.getDate() + dir * 7);
+  buildGrid();
+}
+
+function goToday() {
+  currentWeekStart = getMonday(new Date());
+  buildGrid();
+}
+
+function clearWeek() {
+  if (!confirm('Очистить только ОДНОРАЗОВЫЕ занятия за эту неделю?\n(Постоянные останутся)')) return;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(currentWeekStart);
+    d.setDate(d.getDate() + i);
+    const dateStr = formatDate(d);
+    delete lessons[dateStr];
+    for (const key of Object.keys(completedMap)) {
+      if (key.startsWith(dateStr + '__')) delete completedMap[key];
+    }
+  }
+  saveAll();
+  renderLessons();
+}
+
+document.querySelectorAll('input[name="lessonType"]').forEach(radio => {
+  radio.addEventListener('change', (e) => {
+    document.getElementById('typeHint').textContent = e.target.value === 'recurring'
+      ? 'Будет повторяться каждую неделю'
+      : 'Только на эту дату';
+  });
+});
+
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+
+loadLessons();
+loadTodos();
+loadStudents();
+buildTimeColumn();
+buildGrid();
+renderTodos();
+</script>
+</body>
+</html>
